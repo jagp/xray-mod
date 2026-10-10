@@ -2,5 +2,14 @@
   "name": "xray-mod",
   "version": "0.1.0",
   "description": "Stare deeply into your contexts",
-  "types": "./types/index.d.ts"
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "countMode": {
+      "type": "string",
+      "title": "Count mode",
+      "description": "estimate: local estimates, no API calls. exact: tool schemas and memory files counted exactly by the token-count API (one request each); per-call activity is always estimated.",
+      "options": ["estimate", "exact"],
+      "default": "exact"
+    }
+  }
 }
