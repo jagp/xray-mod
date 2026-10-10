@@ -1,7 +1,8 @@
 import { expect, test } from 'claude-code/testing'
 
 import type { Snapshot } from '../types'
-import { DEMO_PANE, describe, diffRows, fmt, PANE, summarize } from './register'
+import { describe } from './attribution'
+import { DEMO_PANE, diffRows, fmt, PANE, summarize } from './register'
 
 // $.ui.open rejects any other id at runtime, which neither validate nor tsc
 // sees: a colon in the demo pane's id once made its command hook fail.
