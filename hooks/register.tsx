@@ -2,8 +2,10 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Row, Shift, Snapshot } from '../types'
+import { apply, INITIAL, isOverViewport } from './viewport-model'
+import type { Intent, ViewportProps } from './viewport-model'
 
-const PANE = 'xray-mod'
+export const PANE = 'xray-mod'
 const TITLE = 'Context'
 const LOG_SIZE = 12
 // Ignore estimate jitter below this many tokens when logging a shift.
@@ -11,6 +13,41 @@ const NOISE = 100
 
 const snapshot = atom({ plugin: 'xray-mod', key: 'snapshot' } as const, null)
 const log = atom({ plugin: 'xray-mod', key: 'log' } as const, [])
+// Each viewport's scroll offset and collapsed flag, keyed by its Client key.
+const viewports = atom({ plugin: 'xray-mod', key: 'viewports' } as const, {})
+
+// --- T1 viewport spike: a demo pane holding one viewport over 500 lines -----
+// The demo pane's tree, top to bottom (row numbers matter for the wheel math):
+//   row 0      hint text
+//   row 1      blank
+//   row 2      viewport title row
+//   rows 3..   viewport body (DEMO_HEIGHT rows)
+//   then       filler rows, so the pane itself has something to scroll
+// Pane ids allow only letters, digits, `_` and `-` (PaneOpenArgs.id); any
+// other character makes $.ui.open reject and the hook calling it fail.
+export const DEMO_PANE = 'xray-mod-viewport-demo'
+const DEMO_KEY = 'demo'
+const DEMO_BODY_TOP = 3
+const DEMO_HEIGHT = 12
+const DEMO_LINES = Array.from(
+  { length: 500 },
+  (_, index) => `demo line ${index + 1}: ${'·'.repeat(index % 40)}|`,
+)
+// The pane's own scroll offset as last passed through ui.scroll; the wheel
+// pointer's row is relative to what the pane shows, so we need it to find the
+// row in the pane's full tree (viewport-model.ts#isOverViewport).
+let demoPaneOffset = 0
+
+// Fold one Intent into the demo viewport's stored state; the atom write
+// redraws the pane, which hands the Client its new slice.
+const applyToDemo = (
+  $: EngineInterface,
+  intent: Intent,
+) =>
+  update($, viewports, all => ({
+    ...all,
+    [DEMO_KEY]: apply(all[DEMO_KEY] ?? INITIAL, intent, DEMO_LINES.length, DEMO_HEIGHT),
+  }))
 
 export const fmt = (n: number): string =>
   Math.abs(n) >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n)
@@ -138,6 +175,99 @@ export const register: Register = on => {
       description: 'Open the context x-ray: every token, traced to its source',
     })
     await $.command.register({ name: 'xrm', description: 'Same as /xray-mod' })
+    await $.command.register({
+      name: 'xray-mod-viewport-demo',
+      description: 'T1 spike: open a pane with one scrollable viewport over 500 lines',
+    })
+
+    return next(e)
+  })
+
+  on('command.run', { command: 'xray-mod-viewport-demo' }, async $ => {
+    await $.ui.open({ id: DEMO_PANE, title: 'Viewport spike' })
+
+    return { text: 'Viewport spike opened: wheel over it, click it then use arrows, try [copy].' }
+  })
+
+  // Draw the demo pane: hint, the viewport (a Client), then filler.
+  //   1. read this viewport's state (offset, collapsed)
+  //   2. hand the Client only the visible slice of DEMO_LINES
+  //   3. size the Client: title row + body, or the title row alone when collapsed
+  on('ui.render', { component: 'Pane', requestId: DEMO_PANE }, async ($, e) => {
+    const elements = $.ui.resolve(e)
+    const { Box, Text } = elements
+    const state = (await read($, viewports))[DEMO_KEY] ?? INITIAL
+    const props: ViewportProps = {
+      title: 'demo.txt',
+      lines: DEMO_LINES.slice(state.offset, state.offset + DEMO_HEIGHT),
+      startLine: state.offset,
+      total: DEMO_LINES.length,
+      height: DEMO_HEIGHT,
+      collapsed: state.collapsed,
+    }
+
+    return (
+      <Box flexDirection="column">
+        <Text dimColor>Wheel over the viewport scrolls it; elsewhere scrolls the pane.</Text>
+        <Text> </Text>
+        {'Client' in elements ? (
+          <elements.Client
+            key={DEMO_KEY}
+            module="./viewport.tsx"
+            props={props}
+            height={state.collapsed ? 1 : DEMO_HEIGHT + 1}
+          />
+        ) : (
+          // Mobile draws no Client: show the same slice as plain text.
+          props.lines.map((line, index) => <Text key={`line-${index}`}>{line}</Text>)
+        )}
+        {Array.from({ length: 30 }, (_, index) => (
+          <Text key={`filler-${index}`} dimColor>
+            pane filler {index + 1}
+          </Text>
+        ))}
+      </Box>
+    )
+  })
+
+  // The viewport posted an Intent (viewport.tsx). Act on it:
+  //   - copy:   the FULL text (not just the slice) goes to the clipboard
+  //   - expand: pop-out lands in T7; say so instead of doing nothing
+  //   - scroll / toggle: fold into the atom, which redraws the pane
+  on('ui.message', async ($, e, next) => {
+    if (e.requestId !== DEMO_PANE || e.element !== DEMO_KEY) return next(e)
+    const intent = e.data as Intent
+
+    if (intent.type === 'copy') {
+      const copied = await $.ui.copy({ text: DEMO_LINES.join('\n'), surface: e.surface })
+      $.ui.toast(copied.isCopied ? `Copied ${DEMO_LINES.length} lines` : `Copy failed: ${copied.reason}`)
+    } else if (intent.type === 'expand') {
+      $.ui.toast('Pop-out arrives in T7')
+    } else {
+      await applyToDemo($, intent)
+    }
+
+    return {}
+  })
+
+  // The wheel reaches the pane, never the Client. A person's tick whose
+  // pointer is over the viewport body scrolls the viewport and the pane stays
+  // put (returning without next() leaves the pane where it is); any other
+  // scroll moves the pane as usual, and we remember where it went.
+  on('ui.scroll', { component: 'Pane', requestId: DEMO_PANE }, async ($, e, next) => {
+    const state = (await read($, viewports))[DEMO_KEY] ?? INITIAL
+    const isOnViewport =
+      e.origin.kind === 'person' &&
+      e.pointer !== undefined &&
+      !state.collapsed &&
+      isOverViewport(demoPaneOffset, e.pointer.row, DEMO_BODY_TOP, DEMO_HEIGHT)
+
+    if (isOnViewport) {
+      await applyToDemo($, { type: 'scroll', by: e.by })
+
+      return {}
+    }
+    demoPaneOffset = e.offset
 
     return next(e)
   })
