@@ -3,6 +3,8 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type { Row, Shift, Snapshot } from '../types'
 import { classify, describe, EMPTY_LEDGER, toRow } from './attribution'
+import { buildTable } from './contributions'
+import type { Node } from './contributions'
 import type { Row as AttributionRow } from './attribution'
 import { apply, INITIAL, isOverViewport } from './viewport-model'
 import type { Intent, ViewportProps } from './viewport-model'
@@ -307,21 +309,32 @@ export const register: Register = on => {
     return stored
   }).catch(($, e, next) => next(e))
 
-  // The spike's readout: tallies by size, ≈tokens at 4 chars each, `~` where
-  // part of an item was linked by arrival order (attribution.ts, step 3).
+  // T3 preview: the two-column table (contributions.ts) built from the live
+  // window and the stored tally, as text until the T5 pane draws it.
+  //   1. read a summary breakdown (local estimate: no API calls)
+  //   2. build the table: static | active | calls per group, top 3 children
+  //   3. close with the sum check against the window's used total
   on('command.run', { command: 'xray-mod-attribution' }, async $ => {
     const { tally } = await read($, attribution)
-    const rows = Object.values(tally).sort((a, b) => b.chars - a.chars).slice(0, 20)
-    const lines = rows.map(
-      row =>
-        `${fmt(Math.round(row.chars / 4)).padStart(7)}  ${row.source.padEnd(9)} ${row.item}` +
-        `${row.calls ? ` ×${row.calls}` : ''}${row.isInferred ? ' ~' : ''}`,
-    )
+    const breakdown = (await $.session.usage({ breakdown: 'summary' })).context.breakdown
+    if (!breakdown) return { text: 'No breakdown yet: the window has no measured response.' }
+
+    const table = buildTable(breakdown, tally)
+    const cell = (tokens: number) => (tokens ? fmt(tokens) : '—').padStart(7)
+    const line = (label: string, row: Node, indent: string) =>
+      `${indent}${label.slice(0, 30 - indent.length).padEnd(30 - indent.length)}${cell(row.static)}${cell(row.active)}` +
+      `${row.calls ? ` ×${row.calls}` : ''}${row.isInferred ? ' ~' : ''}`
+    const lines = table.nodes.flatMap(group => [
+      line(group.label, group, ''),
+      ...group.children.slice(0, 3).map(child => line(child.label, child, '  ')),
+    ])
+    const sum = table.nodes.reduce((total, group) => total + group.static + group.active, 0)
 
     return {
-      text: rows.length
-        ? `≈tokens  source    item (since the mod loaded)\n${lines.join('\n')}`
-        : 'Nothing recorded yet: rows are counted from the moment the mod loads.',
+      text:
+        `${'≈tokens'.padEnd(30)} static  active\n${lines.join('\n')}\n` +
+        `sum ${fmt(sum)} of ${fmt(table.total)} used` +
+        `${table.scale < 1 ? ` · active scaled ×${table.scale.toFixed(2)} to fit Messages` : ''}`,
     }
   })
 
