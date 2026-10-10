@@ -1,7 +1,13 @@
 import { expect, test } from 'claude-code/testing'
 
 import type { Snapshot } from '../types'
-import { describe, diffRows, fmt, summarize } from './register'
+import { DEMO_PANE, describe, diffRows, fmt, PANE, summarize } from './register'
+
+// $.ui.open rejects any other id at runtime, which neither validate nor tsc
+// sees: a colon in the demo pane's id once made its command hook fail.
+test('every pane id is one $.ui.open accepts', () => {
+  for (const id of [PANE, DEMO_PANE]) expect(id).toMatch(/^[A-Za-z0-9_-]{1,64}$/)
+})
 
 const prev = {
   rows: [

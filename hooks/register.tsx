@@ -5,7 +5,7 @@ import type { Row, Shift, Snapshot } from '../types'
 import { apply, INITIAL, isOverViewport } from './viewport-model'
 import type { Intent, ViewportProps } from './viewport-model'
 
-const PANE = 'context-lens'
+export const PANE = 'context-lens'
 const TITLE = 'Context'
 const LOG_SIZE = 12
 // Ignore estimate jitter below this many tokens when logging a shift.
@@ -23,7 +23,9 @@ const viewports = atom({ plugin: 'context-lens', key: 'viewports' } as const, {}
 //   row 2      viewport title row
 //   rows 3..   viewport body (DEMO_HEIGHT rows)
 //   then       filler rows, so the pane itself has something to scroll
-const DEMO_PANE = 'context-lens:viewport-demo'
+// Pane ids allow only letters, digits, `_` and `-` (PaneOpenArgs.id); any
+// other character makes $.ui.open reject and the hook calling it fail.
+export const DEMO_PANE = 'context-lens-viewport-demo'
 const DEMO_KEY = 'demo'
 const DEMO_BODY_TOP = 3
 const DEMO_HEIGHT = 12
