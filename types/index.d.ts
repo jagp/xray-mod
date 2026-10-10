@@ -32,7 +32,7 @@ export type ViewportState = { offset: number; collapsed: boolean }
 
 declare module 'claude-code' {
   interface PluginState {
-    'context-lens': {
+    'xray-mod': {
       snapshot: Snapshot | null
       log: Shift[]
       viewports: Record<string, ViewportState>

@@ -5,16 +5,16 @@ import type { Row, Shift, Snapshot } from '../types'
 import { apply, INITIAL, isOverViewport } from './viewport-model'
 import type { Intent, ViewportProps } from './viewport-model'
 
-export const PANE = 'context-lens'
+export const PANE = 'xray-mod'
 const TITLE = 'Context'
 const LOG_SIZE = 12
 // Ignore estimate jitter below this many tokens when logging a shift.
 const NOISE = 100
 
-const snapshot = atom({ plugin: 'context-lens', key: 'snapshot' } as const, null)
-const log = atom({ plugin: 'context-lens', key: 'log' } as const, [])
+const snapshot = atom({ plugin: 'xray-mod', key: 'snapshot' } as const, null)
+const log = atom({ plugin: 'xray-mod', key: 'log' } as const, [])
 // Each viewport's scroll offset and collapsed flag, keyed by its Client key.
-const viewports = atom({ plugin: 'context-lens', key: 'viewports' } as const, {})
+const viewports = atom({ plugin: 'xray-mod', key: 'viewports' } as const, {})
 
 // --- T1 viewport spike: a demo pane holding one viewport over 500 lines -----
 // The demo pane's tree, top to bottom (row numbers matter for the wheel math):
@@ -25,7 +25,7 @@ const viewports = atom({ plugin: 'context-lens', key: 'viewports' } as const, {}
 //   then       filler rows, so the pane itself has something to scroll
 // Pane ids allow only letters, digits, `_` and `-` (PaneOpenArgs.id); any
 // other character makes $.ui.open reject and the hook calling it fail.
-export const DEMO_PANE = 'context-lens-viewport-demo'
+export const DEMO_PANE = 'xray-mod-viewport-demo'
 const DEMO_KEY = 'demo'
 const DEMO_BODY_TOP = 3
 const DEMO_HEIGHT = 12
@@ -160,21 +160,29 @@ const openPane = async ($: EngineInterface) => {
   enqueue($, 'full', 'opened')
 }
 
+// What both /xray-mod and /xrm do: open the pane (which starts an exact count).
+const openCommand = async ($: EngineInterface) => {
+  await openPane($)
+
+  return { text: 'xray-mod opened; exact count running.' }
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
-      name: 'context-lens',
-      description: 'Open the live context breakdown pane (runs an exact count)',
+      name: 'xray-mod',
+      description: 'Open the context x-ray: every token, traced to its source',
     })
+    await $.command.register({ name: 'xrm', description: 'Same as /xray-mod' })
     await $.command.register({
-      name: 'context-lens-viewport-demo',
+      name: 'xray-mod-viewport-demo',
       description: 'T1 spike: open a pane with one scrollable viewport over 500 lines',
     })
 
     return next(e)
   })
 
-  on('command.run', { command: 'context-lens-viewport-demo' }, async $ => {
+  on('command.run', { command: 'xray-mod-viewport-demo' }, async $ => {
     await $.ui.open({ id: DEMO_PANE, title: 'Viewport spike' })
 
     return { text: 'Viewport spike opened: wheel over it, click it then use arrows, try [copy].' }
@@ -263,11 +271,9 @@ export const register: Register = on => {
     return next(e)
   })
 
-  on('command.run', { command: 'context-lens' }, async $ => {
-    await openPane($)
-
-    return { text: 'Context pane opened; exact count running.' }
-  })
+  // /xray-mod and its short alias /xrm share one handler (openCommand, above).
+  on('command.run', { command: 'xray-mod' }, openCommand)
+  on('command.run', { command: 'xrm' }, openCommand)
 
   // Note which main-thread tools ran; the next model step measures what they
   // added. A skill's body or a searched tool's schema enters the window after
@@ -328,7 +334,7 @@ export const register: Register = on => {
     return (
       <Box>
         {own}
-        <Button key="context-lens" label={label} onPress={() => openPane($)} />
+        <Button key="xray-mod" label={label} onPress={() => openPane($)} />
       </Box>
     )
   })
