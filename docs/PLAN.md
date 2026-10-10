@@ -1,10 +1,12 @@
-# Implementation Plan: context-lens v2
+# Implementation Plan: xray-mod v2
 
-Approved 2026-10-10. Status: T0 in progress.
+Approved 2026-10-10. Renamed from context-lens to xray-mod the same day
+(the old name collided with larsderidder/context-lens in this exact niche).
+Status: T0 done; T1 and T2 spikes awaiting Checkpoint A.
 
 ## Overview
 
-Turn context-lens from a readout into a context inspector. A two-column table
+Turn xray-mod from a readout into a context inspector. A two-column table
 separates **static** overhead (listings, schemas, memory files: paid every
 request) from **active** contributions (what each skill, tool and agent has
 actually added to Messages), with every row drilling down to individual calls.
@@ -98,6 +100,9 @@ with per-step usage; human review.
 ### Phase 5: Polish
 - [ ] **T14 · Performance** (S). Incremental transcript walk, hook budget.
 - [ ] **T15 · Shipping prep** (S). README, `marketplace.json`.
+- [ ] **T16 · Footer pill `⋐∿⋑`** (S). Replace the `◧` opener with the lens
+  barrel `⋐∿⋑ 71%`; the wave inverts (`∿` ↔ `∽`) while a measurement runs and
+  holds still when settled. Check the glyphs render in a real terminal.
 
 ## Risks and mitigations
 

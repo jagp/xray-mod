@@ -56,7 +56,7 @@ export type Tally = { source: Source; item: string; chars: number; calls: number
 
 declare module 'claude-code' {
   interface PluginState {
-    'context-lens': {
+    'xray-mod': {
       snapshot: Snapshot | null
       log: Shift[]
       attribution: { ledger: Ledger; tally: Record<string, Tally> }
