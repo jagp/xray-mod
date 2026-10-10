@@ -2,6 +2,8 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Row, Shift, Snapshot } from '../types'
+import { classify, describe, EMPTY_LEDGER, toRow } from './attribution'
+import type { Row as AttributionRow } from './attribution'
 
 const PANE = 'context-lens'
 const TITLE = 'Context'
@@ -17,17 +19,37 @@ export const fmt = (n: number): string =>
 
 const signed = (n: number): string => (n > 0 ? `+${fmt(n)}` : `-${fmt(-n)}`)
 
-// Names the call in the shift log: which skill, which search, which file.
-export const describe = (tool: string, input: Readonly<Record<string, unknown>>): string => {
-  const arg =
-    tool === 'Skill' ? input.skill
-    : tool === 'ToolSearch' ? input.query
-    : tool === 'Agent' ? input.subagent_type
-    : tool === 'Read' ? String(input.file_path ?? '').split(/[\\/]/).pop()
-    : undefined
+// --- T2 attribution spike: tally each source's share of the window ----------
+// Every transcript row passes through the session.append hook below and is
+// classified (attribution.ts); the running tally lives in $.state, so a
+// module reload keeps it. Keyed "source:item", e.g. "skill:plugin-authoring".
+const attribution = atom(
+  { plugin: 'context-lens', key: 'attribution' } as const,
+  { ledger: EMPTY_LEDGER, tally: {} },
+)
 
-  return typeof arg === 'string' && arg !== '' ? `${tool}(${arg})` : tool
-}
+// Fold one row's contributions into the stored tally:
+//   1. classify the row against the stored ledger (links results to calls)
+//   2. add each contribution's chars to its source:item total
+//   3. count a call once, on its first contribution (the tool_use itself)
+//   4. remember whether any of an item's chars were linked by arrival order
+const recordRow = ($: EngineInterface, row: AttributionRow) =>
+  update($, attribution, ({ ledger, tally }) => {
+    const out = classify(row, ledger) //                                      1
+    const next = { ...tally }
+    for (const part of out.contributions) {
+      const key = `${part.source}:${part.item}`
+      const before = next[key] ?? { source: part.source, item: part.item, chars: 0, calls: 0, isInferred: false }
+      next[key] = {
+        ...before,
+        chars: before.chars + part.chars, //                                  2
+        calls: before.calls + (part.callId && !ledger.calls[part.callId] ? 1 : 0), // 3
+        isInferred: before.isInferred || part.isInferred === true, //        4
+      }
+    }
+
+    return { ledger: out.ledger, tally: next }
+  })
 
 export const diffRows = (
   rows: Omit<Row, 'delta'>[],
@@ -129,8 +151,39 @@ export const register: Register = on => {
       name: 'context-lens',
       description: 'Open the live context breakdown pane (runs an exact count)',
     })
+    await $.command.register({
+      name: 'context-lens-attribution',
+      description: 'T2 spike: list what each source has put into the window so far',
+    })
 
     return next(e)
+  })
+
+  // Every row on its way into the transcript: let it be stored, then classify
+  // it. Observe only; a failure here must never cost the session a row.
+  on('session.append', async ($, e, next) => {
+    const stored = await next(e)
+    await recordRow($, toRow(e))
+
+    return stored
+  }).catch(($, e, next) => next(e))
+
+  // The spike's readout: tallies by size, ≈tokens at 4 chars each, `~` where
+  // part of an item was linked by arrival order (attribution.ts, step 3).
+  on('command.run', { command: 'context-lens-attribution' }, async $ => {
+    const { tally } = await read($, attribution)
+    const rows = Object.values(tally).sort((a, b) => b.chars - a.chars).slice(0, 20)
+    const lines = rows.map(
+      row =>
+        `${fmt(Math.round(row.chars / 4)).padStart(7)}  ${row.source.padEnd(9)} ${row.item}` +
+        `${row.calls ? ` ×${row.calls}` : ''}${row.isInferred ? ' ~' : ''}`,
+    )
+
+    return {
+      text: rows.length
+        ? `≈tokens  source    item (since the mod loaded)\n${lines.join('\n')}`
+        : 'Nothing recorded yet: rows are counted from the moment the mod loads.',
+    }
   })
 
   on('command.run', { command: 'context-lens' }, async $ => {

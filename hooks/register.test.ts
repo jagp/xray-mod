@@ -1,7 +1,8 @@
 import { expect, test } from 'claude-code/testing'
 
 import type { Snapshot } from '../types'
-import { describe, diffRows, fmt, summarize } from './register'
+import { describe } from './attribution'
+import { diffRows, fmt, summarize } from './register'
 
 const prev = {
   rows: [
