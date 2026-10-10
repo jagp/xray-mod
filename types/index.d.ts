@@ -28,8 +28,14 @@ export type Shift = {
   agentId?: string
 }
 
+export type ViewportState = { offset: number; collapsed: boolean }
+
 declare module 'claude-code' {
   interface PluginState {
-    'context-lens': { snapshot: Snapshot | null; log: Shift[] }
+    'context-lens': {
+      snapshot: Snapshot | null
+      log: Shift[]
+      viewports: Record<string, ViewportState>
+    }
   }
 }
