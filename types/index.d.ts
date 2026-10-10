@@ -54,12 +54,15 @@ export type Ledger = {
 // One source:item's running total of what it put into the window.
 export type Tally = { source: Source; item: string; chars: number; calls: number; isInferred: boolean }
 
+export type ViewportState = { offset: number; collapsed: boolean }
+
 declare module 'claude-code' {
   interface PluginState {
     'xray-mod': {
       snapshot: Snapshot | null
       log: Shift[]
       attribution: { ledger: Ledger; tally: Record<string, Tally> }
+      viewports: Record<string, ViewportState>
     }
   }
 }
