@@ -1,6 +1,6 @@
 {
-  "name": "context-lens",
+  "name": "xray-mod",
   "version": "0.1.0",
-  "description": "Live pane breaking down what occupies the context window, with a log of mid-turn shifts and their causes",
+  "description": "Stare deeply into your contexts",
   "types": "./types/index.d.ts"
 }

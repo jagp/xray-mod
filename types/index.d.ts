@@ -30,6 +30,6 @@ export type Shift = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'context-lens': { snapshot: Snapshot | null; log: Shift[] }
+    'xray-mod': { snapshot: Snapshot | null; log: Shift[] }
   }
 }

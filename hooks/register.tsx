@@ -3,14 +3,14 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type { Row, Shift, Snapshot } from '../types'
 
-const PANE = 'context-lens'
+const PANE = 'xray-mod'
 const TITLE = 'Context'
 const LOG_SIZE = 12
 // Ignore estimate jitter below this many tokens when logging a shift.
 const NOISE = 100
 
-const snapshot = atom({ plugin: 'context-lens', key: 'snapshot' } as const, null)
-const log = atom({ plugin: 'context-lens', key: 'log' } as const, [])
+const snapshot = atom({ plugin: 'xray-mod', key: 'snapshot' } as const, null)
+const log = atom({ plugin: 'xray-mod', key: 'log' } as const, [])
 
 export const fmt = (n: number): string =>
   Math.abs(n) >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n)
@@ -123,21 +123,27 @@ const openPane = async ($: EngineInterface) => {
   enqueue($, 'full', 'opened')
 }
 
+// What both /xray-mod and /xrm do: open the pane (which starts an exact count).
+const openCommand = async ($: EngineInterface) => {
+  await openPane($)
+
+  return { text: 'xray-mod opened; exact count running.' }
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
-      name: 'context-lens',
-      description: 'Open the live context breakdown pane (runs an exact count)',
+      name: 'xray-mod',
+      description: 'Open the context x-ray: every token, traced to its source',
     })
+    await $.command.register({ name: 'xrm', description: 'Same as /xray-mod' })
 
     return next(e)
   })
 
-  on('command.run', { command: 'context-lens' }, async $ => {
-    await openPane($)
-
-    return { text: 'Context pane opened; exact count running.' }
-  })
+  // /xray-mod and its short alias /xrm share one handler (openCommand, above).
+  on('command.run', { command: 'xray-mod' }, openCommand)
+  on('command.run', { command: 'xrm' }, openCommand)
 
   // Note which main-thread tools ran; the next model step measures what they
   // added. A skill's body or a searched tool's schema enters the window after
@@ -198,7 +204,7 @@ export const register: Register = on => {
     return (
       <Box>
         {own}
-        <Button key="context-lens" label={label} onPress={() => openPane($)} />
+        <Button key="xray-mod" label={label} onPress={() => openPane($)} />
       </Box>
     )
   })
