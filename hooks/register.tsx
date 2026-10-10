@@ -124,10 +124,11 @@ const openPane = async ($: EngineInterface) => {
 }
 
 // What both /xray-mod and /xrm do: open the pane (which starts an exact count).
+// The engine prefixes command output with the plugin name, so the text omits it.
 const openCommand = async ($: EngineInterface) => {
   await openPane($)
 
-  return { text: 'xray-mod opened; exact count running.' }
+  return { text: 'Opened; exact count running.' }
 }
 
 export const register: Register = on => {
