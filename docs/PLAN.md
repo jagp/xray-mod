@@ -2,7 +2,7 @@
 
 Approved 2026-10-10. Renamed from context-lens to xray-mod the same day
 (the old name collided with larsderidder/context-lens in this exact niche).
-Status: T0 done; T1 and T2 spikes awaiting Checkpoint A.
+Status: T0–T2 done and merged to develop; T3 in progress.
 
 ## Overview
 
@@ -37,24 +37,37 @@ snapshots of the window at any past turn.
 ## Task list
 
 ### Phase 0: Home
-- [ ] **T0 · Repo** (S). `git init` on `develop`, copy the mod from the
+- [x] **T0 · Repo** (S). `git init` on `develop`, copy the mod from the
   session's dev-mods folder, `.gitignore` the engine-generated
   `.claude-plugin/types/`. Accept: `claude plugin validate` + tests pass from
   the repo path. Note: this session hot-reloads dev-mods only; test from the
   repo via `CLAUDE_CODE_PLUGIN_DIRS` or `--plugin-dir`.
 
 ### Phase 1: De-risk
-- [ ] **T1 · Viewport spike** (M). Minimal `Client`, fixed height, wheel/arrow
+- [x] **T1 · Viewport spike** (M). Minimal `Client`, fixed height, wheel/arrow
   scroll, copy button → port → `$.ui.copy`, offset survives a redraw.
   Accept: 500 lines scroll on desktop and terminal; copy works.
   Files: `hooks/viewport.tsx`, `hooks/register.tsx`, test.
-- [ ] **T2 · Attribution spike** (M). `classify()` sorts prompt, assistant
+- [x] **T2 · Attribution spike** (M). `classify()` sorts prompt, assistant
   text, per-tool call/result, skill body (message after a `Skill` call),
   reminders/attachments. Accept: fixtures (incl. the `Skill(plugin-authoring)`
   launch-then-body shape) classify correctly.
   Files: `hooks/attribution.ts`, `hooks/attribution.test.ts`, `fixtures/`.
 
-**Checkpoint A:** human review of both spikes.
+**Checkpoint A:** human review of both spikes. Closed 2026-10-10 on partial
+evidence, at the owner's call to move forward:
+- Verified live: `/xrm` opens the pane; `/xray-mod-attribution` attributed
+  real rows (`skill_listing` 29.0k, `edited_text_file`, Bash ×7, Grep ×1).
+- Not yet verified live: the viewport demo's six checks (wheel routing,
+  keys, collapse, copy, expand) and a skill-body row marked `~`.
+- Findings: rows arrive through `session.append` with door, origin,
+  `isMeta` and attachment name, so attribution builds incrementally; a
+  skill body is an `isMeta` row with origin tool `Skill` right after the
+  call's result; hidden injections (`skill_listing`, `edited_text_file`,
+  `total_tokens_reminder`) are attributable; the whole skill list is
+  re-injected into Messages mid-session (≈29k, after the cwd change).
+- Proposed, not yet agreed: shrink T14 (the walk is already incremental);
+  make "injection" a top-level table category; lower the skill-body risk.
 
 ### Phase 2: Two-column table
 - [ ] **T3 · Contribution model + reconcile** (S). Tree category → item →
