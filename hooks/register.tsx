@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, Register, UiOpenResult } from 'claude-code'
 
 import type { Row, Shift, Snapshot } from '../types'
 import { classify, describe, EMPTY_LEDGER, toRow } from './attribution'
@@ -186,18 +186,24 @@ const enqueue = (
   queue = queue.then(() => measure($, detail, cause, isForced)).catch(() => {})
 }
 
+// A command's reply after opening a pane: the success line only when the pane
+// is actually drawn; otherwise the engine's own reason it waits undrawn
+// (UiOpenResult.reason: no surface attached, one that places no panes, ...).
+const openedText = (opened: UiOpenResult, okText: string): string =>
+  opened.isPlaced ? okText : `Open but not drawn: ${opened.reason}`
+
 const openPane = async ($: EngineInterface) => {
-  await $.ui.open({ id: PANE, title: TITLE })
-  enqueue($, settledDetail(), 'opened')
+  const opened = await $.ui.open({ id: PANE, title: TITLE })
+  enqueue($, settledDetail(), 'opened') // the count mode decides estimate vs exact (T4)
+
+  return opened
 }
 
 // What both /xray-mod and /xrm do: open the pane (which starts an exact count).
 // The engine prefixes command output with the plugin name, so the text omits it.
-const openCommand = async ($: EngineInterface) => {
-  await openPane($)
-
-  return { text: 'Opened; exact count running.' }
-}
+const openCommand = async ($: EngineInterface) => ({
+  text: openedText(await openPane($), 'Opened; exact count running.'),
+})
 
 export const register: Register = (on, options) => {
   // The countMode setting (plugin.json userConfig). Changing it, in /config or
@@ -249,9 +255,11 @@ export const register: Register = (on, options) => {
   })
 
   on('command.run', { command: 'xray-mod-viewport-demo' }, async $ => {
-    await $.ui.open({ id: DEMO_PANE, title: 'Viewport spike' })
+    const opened = await $.ui.open({ id: DEMO_PANE, title: 'Viewport spike' })
 
-    return { text: 'Viewport spike opened: wheel over it, click it then use arrows, try [copy].' }
+    return {
+      text: openedText(opened, 'Viewport spike opened: wheel over it, click it then use arrows, try [copy].'),
+    }
   })
 
   // Draw the demo pane: hint, the viewport (a Client), then filler.
