@@ -4,6 +4,8 @@ import type { EngineInterface, Register, UiOpenResult } from 'claude-code'
 import type { Row, Shift, Snapshot } from '../types'
 import { classify, describe, EMPTY_LEDGER, toRow } from './attribution'
 import { buildTable } from './contributions'
+import { columnBadges, COUNT_MODES, pathTail, toCountMode } from './display'
+import type { CountMode } from './display'
 import type { Node } from './contributions'
 import type { Row as AttributionRow } from './attribution'
 import { apply, INITIAL, isOverViewport } from './viewport-model'
@@ -167,6 +169,11 @@ const measure = async (
 
 // Measurements run one at a time, in order, so each diff is against the last.
 let queue: Promise<void> = Promise.resolve()
+// The countMode setting (plugin.json userConfig), set by register() at each
+// load. It governs the on-open and after-turn counts: exact -> a full
+// breakdown, estimate -> a summary one. Mid-turn counts are always summary.
+let countMode: CountMode = 'exact'
+const settledDetail = () => (countMode === 'exact' ? 'full' : 'summary')
 // Main-thread tool calls since the last measurement, named for the shift log.
 const causes: string[] = []
 
@@ -187,7 +194,7 @@ const openedText = (opened: UiOpenResult, okText: string): string =>
 
 const openPane = async ($: EngineInterface) => {
   const opened = await $.ui.open({ id: PANE, title: TITLE })
-  enqueue($, 'full', 'opened')
+  enqueue($, settledDetail(), 'opened') // the count mode decides estimate vs exact (T4)
 
   return opened
 }
@@ -198,7 +205,11 @@ const openCommand = async ($: EngineInterface) => ({
   text: openedText(await openPane($), 'Opened; exact count running.'),
 })
 
-export const register: Register = on => {
+export const register: Register = (on, options) => {
+  // The countMode setting (plugin.json userConfig). Changing it, in /config or
+  // with /xray-mod-count, reloads this module, so reading it once here is enough.
+  countMode = toCountMode(options.countMode)
+
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'xray-mod',
@@ -207,14 +218,40 @@ export const register: Register = on => {
     await $.command.register({ name: 'xrm', description: 'Same as /xray-mod' })
     await $.command.register({
       name: 'xray-mod-attribution',
-      description: 'T2 spike: list what each source has put into the window so far',
+      description: 'Preview the context table: static vs active, per source',
     })
     await $.command.register({
       name: 'xray-mod-viewport-demo',
       description: 'T1 spike: open a pane with one scrollable viewport over 500 lines',
     })
+    await $.command.register({
+      name: 'xray-mod-count',
+      description: 'Show or set how xray-mod counts tokens: estimate | exact',
+    })
 
     return next(e)
+  })
+
+  // /xray-mod-count [estimate|exact]: shows the mode, or sets it through the
+  // engine's config row (xray-mod.countMode), the same one /config shows, so
+  // the setting stays the single source of truth. Setting it reloads the mod.
+  on('command.run', { command: 'xray-mod-count' }, async ($, e) => {
+    const wanted = e.args.trim().toLowerCase()
+    const badges = columnBadges(countMode)
+    if (wanted === '') {
+      return { text: `Count mode: ${countMode} (static ${badges.static}, active ${badges.active}).` }
+    }
+    if (!COUNT_MODES.includes(wanted as CountMode)) {
+      return { text: `Unknown mode "${wanted}". Use: /xray-mod-count ${COUNT_MODES.join(' | ')}` }
+    }
+    await $.config.set({ key: 'xray-mod.countMode', value: wanted })
+
+    return {
+      text:
+        wanted === 'exact'
+          ? 'Count mode: exact. Tool schemas and memory files are counted by the token-count API (one request each); per-call activity stays estimated.'
+          : 'Count mode: estimate. Local estimates only, no API calls.',
+    }
   })
 
   on('command.run', { command: 'xray-mod-viewport-demo' }, async $ => {
@@ -319,28 +356,35 @@ export const register: Register = on => {
 
   // T3 preview: the two-column table (contributions.ts) built from the live
   // window and the stored tally, as text until the T5 pane draws it.
-  //   1. read a summary breakdown (local estimate: no API calls)
-  //   2. build the table: static | active | calls per group, top 3 children
-  //   3. close with the sum check against the window's used total
+  //   1. read a breakdown: summary (local estimate) or, in exact mode, full
+  //      (the engine counts each tool schema and memory file exactly)
+  //   2. build the table: static | active | calls per group, top 3 children;
+  //      memory files show their path's tail (display.ts#pathTail)
+  //   3. head each column with its badge; close with the sum check
   on('command.run', { command: 'xray-mod-attribution' }, async $ => {
     const { tally } = await read($, attribution)
-    const breakdown = (await $.session.usage({ breakdown: 'summary' })).context.breakdown
+    const detail = countMode === 'exact' ? 'full' : 'summary'
+    const breakdown = (await $.session.usage({ breakdown: detail })).context.breakdown
     if (!breakdown) return { text: 'No breakdown yet: the window has no measured response.' }
 
     const table = buildTable(breakdown, tally)
-    const cell = (tokens: number) => (tokens ? fmt(tokens) : '—').padStart(7)
+    const badges = columnBadges(countMode)
+    const cell = (tokens: number) => (tokens ? fmt(tokens) : '—').padStart(9)
     const line = (label: string, row: Node, indent: string) =>
       `${indent}${label.slice(0, 30 - indent.length).padEnd(30 - indent.length)}${cell(row.static)}${cell(row.active)}` +
       `${row.calls ? ` ×${row.calls}` : ''}${row.isInferred ? ' ~' : ''}`
     const lines = table.nodes.flatMap(group => [
       line(group.label, group, ''),
-      ...group.children.slice(0, 3).map(child => line(child.label, child, '  ')),
+      ...group.children
+        .slice(0, 3)
+        .map(child => line(group.key === 'memory' ? pathTail(child.label) : child.label, child, '  ')),
     ])
     const sum = table.nodes.reduce((total, group) => total + group.static + group.active, 0)
 
     return {
       text:
-        `${'≈tokens'.padEnd(30)} static  active\n${lines.join('\n')}\n` +
+        `${`tokens · ${countMode} mode`.padEnd(30)}${'static'.padStart(9)}${'active'.padStart(9)}\n` +
+        `${''.padEnd(30)}${badges.static.padStart(9)}${badges.active.padStart(9)}\n${lines.join('\n')}\n` +
         `sum ${fmt(sum)} of ${fmt(table.total)} used` +
         `${table.scale < 1 ? ` · active scaled ×${table.scale.toFixed(2)} to fit Messages` : ''}`,
     }
@@ -386,7 +430,7 @@ export const register: Register = on => {
   // Rate-limit and cost ticks fire this too; a full count there would be waste.
   on('session.measure', ($, e, next) => {
     if (e.changed.includes('context')) {
-      enqueue($, 'full', causes.splice(0).join(', ') || 'turn end')
+      enqueue($, settledDetail(), causes.splice(0).join(', ') || 'turn end')
     }
 
     return next(e)

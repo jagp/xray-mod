@@ -2,7 +2,7 @@
 
 Approved 2026-10-10. Renamed from context-lens to xray-mod the same day
 (the old name collided with larsderidder/context-lens in this exact niche).
-Status: T0–T2 done and merged to develop; T3 in progress.
+Status: T0–T4 done; T5 (expandable table UI) next.
 
 ## Overview
 
@@ -70,12 +70,21 @@ evidence, at the owner's call to move forward:
   make "injection" a top-level table category; lower the skill-body risk.
 
 ### Phase 2: Two-column table
-- [ ] **T3 · Contribution model + reconcile** (S). Tree category → item →
+- [x] **T3 · Contribution model + reconcile** (S). Tree category → item →
   call; static from the breakdown, active from T2, scaled to `Messages`.
   Accept: columns sum to the /context total within 1%.
-- [ ] **T4 · Count toggle + signpost** (S–M). `countMode` setting, pane
+  Done: `hooks/contributions.ts`; live check summed 621.4k of 621.4k used.
+  Deviation: active is scaled *down* only, never up. The tally starts when
+  the mod loads, so scaling it up would inflate every item; the gap is its
+  own row, "Before xray-mod loaded".
+- [x] **T4 · Count toggle + signpost** (S–M). `countMode` setting, pane
   toggle, badge. Includes verifying whether a per-block token-count op exists;
   if not, "exact" = exact per category, items estimated, and the badge says so.
+  Done: `userConfig.countMode` (`/config` picker) + `/xray-mod-count`; the
+  pane toggle moves to T5. Found: no per-block count op for plugins, but a
+  full breakdown counts each tool schema and memory file exactly, so the
+  badge is per column (static `exact` | `≈ est.`, active always `≈ chars÷4`).
+  Default `exact`, keeping the earlier choice of full counts after turns.
 - [ ] **T5 · Expandable table UI** (M). static / active / calls columns; row
   expand state in an atom.
 
